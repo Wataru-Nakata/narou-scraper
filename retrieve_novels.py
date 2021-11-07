@@ -8,13 +8,19 @@ import os
 import tqdm
 
 
-def retrieve_text(ncode):
+def retrieve_text(ncode,pbar):
     # 全部分数を取得
-    info_url = "https://ncode.syosetu.com/novelview/infotop/ncode/{}/".format(ncode)
-    info_res = request.urlopen(info_url)
-    soup = BeautifulSoup(info_res, "html.parser")
-    pre_info = soup.select_one("#pre_info").text
-    num_parts = int(re.search(r"全([0-9]+)部分", pre_info).group(1))
+    while True:
+        try:
+            info_url = "https://ncode.syosetu.com/novelview/infotop/ncode/{}/".format(ncode)
+            info_res = request.urlopen(info_url)
+            soup = BeautifulSoup(info_res, "html.parser")
+            pre_info = soup.select_one("#pre_info").text
+            num_parts = int(re.search(r"全([0-9]+)部分", pre_info).group(1))
+            break
+        except:
+            pbar.set_description('Error occured while requesting', url)
+            time.sleep(1)
 
     for part in range(1, num_parts+1):
         # 作品本文ページのURL
@@ -25,7 +31,7 @@ def retrieve_text(ncode):
                 res = request.urlopen(url)
                 break
             except:
-                print('Error occured while requesting', url)
+                pbar.set_description('Error occured while requesting', url)
                 time.sleep(1)
         soup = BeautifulSoup(res, "html.parser")
 
@@ -33,7 +39,7 @@ def retrieve_text(ncode):
         honbun = soup.select_one("#novel_honbun").text
         honbun += "\n"  # 次の部分との間は念のため改行しておく
         
-        print("part {:d} downloaded (total: {:d} parts)".format(part, num_parts))  # 進捗を表示
+        pbar.set_description("part {:d} downloaded (total: {:d} parts)".format(part, num_parts))  # 進捗を表示
 
         time.sleep(1)  # 次の部分取得までは1秒間の時間を空ける
     return honbun
@@ -46,7 +52,8 @@ if __name__=="__main__":
     args = parser.parse_args()
     df = pd.read_excel(args.list)
     df = df[df['global_point'] > args.min_point]
-    for idx, row in tqdm.tqdm(df.iterrows()):
-        honbun = retrieve_text(row['ncode'].lower())
+    pbar = tqdm.tqdm(df.iterrows())
+    for idx, row in pbar:
+        honbun = retrieve_text(row['ncode'].lower(),pbar)
         with open(os.path.join('data',row['ncode']+'.txt'), mode='w') as f:
             f.write(honbun)
